@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfiniVids - Multi-Video Sync Player</title>
+    <link rel="stylesheet" href="./css/main.css">
+    <link rel="icon" type="image/svg+xml" href="./images/favicon.svg">
+</head>
+<body>
+    <!-- Single Ribbon -->
+    <div class="ribbon">
+        <span class="ribbon-title">🎬 InfiniVids</span>
+        
+        <div class="ribbon-divider"></div>
+        
+        <div class="ribbon-group">
+            <input type="number" id="videoCount" min="1" max="24" value="9" title="Number of videos" onchange="updateVideoCount()">
+        </div>
+
+        <div class="ribbon-group">
+            <label>Layout:</label>
+            <select id="layoutPreset" onchange="applyLayoutPreset()">
+                <option value="auto">Auto</option>
+                <option value="1x1">1×1</option>
+                <option value="2x1">2×1</option>
+                <option value="2x2">2×2</option>
+                <option value="3x2">3×2</option>
+                <option value="3x3">3×3</option>
+                <option value="4x3">4×3</option>
+                <option value="4x4">4×4</option>
+                <option value="4x5">4×5</option>
+                <option value="4x6">4×6</option>
+                <option value="5x4">5×4</option>
+                <option value="6x4">6×4</option>
+            </select>
+        </div>
+
+        <div class="ribbon-group">
+            <label>Scale:</label>
+            <select id="scalingMode" onchange="updateScalingMode()">
+                <option value="native">Fit</option>
+                <option value="fill">Fill</option>
+            </select>
+        </div>
+
+        <div class="ribbon-group">
+            <label>Audio:</label>
+            <select id="audioMode" onchange="updateAudioMode()">
+                <option value="single">Single</option>
+                <option value="all">All</option>
+            </select>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <!-- Desync Toggle -->
+        <button id="desyncBtn" class="desync-btn" onclick="toggleDesync()" title="Toggle independent playback (D)">⚡ Desync</button>
+
+        <div class="ribbon-divider"></div>
+
+        <div class="ribbon-group">
+            <button onclick="stepFrame(-1)">⏮</button>
+            <button onclick="seek(-10)">-10s</button>
+            <button onclick="seek(-5)">-5s</button>
+            <button class="play-btn" id="playBtn" onclick="togglePlay()">▶ Play</button>
+            <button onclick="seek(5)">+5s</button>
+            <button onclick="seek(10)">+10s</button>
+            <button onclick="stepFrame(1)">⏭</button>
+        </div>
+
+        <div class="progress-group">
+            <span class="time-display" id="timeDisplay">00:00 / 00:00</span>
+            <div class="progress-bar" id="progressBar" onclick="seekTo(event)">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <div class="ribbon-group">
+            <label>Speed:</label>
+            <select id="playbackSpeed" onchange="updateSpeed()">
+                <option value="0.25">0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="0.75">0.75×</option>
+                <option value="1" selected>1×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2×</option>
+            </select>
+        </div>
+
+        <button id="loopBtn" onclick="toggleLoop()" class="active">Loop 🔁</button>
+
+        <div class="ribbon-divider"></div>
+
+        <div class="ribbon-group">
+            <label>🔊</label>
+            <input type="range" id="masterVolume" min="0" max="100" value="100" onchange="updateMasterVolume()">
+            <span class="vol-display" id="volumeDisplay">100%</span>
+        </div>
+
+        <div class="ribbon-divider"></div>
+
+        <button onclick="toggleFullscreen()">⛶</button>
+        <button onclick="showShortcuts()">⌨</button>
+        <button onclick="showInfo()" class="info-btn">ℹ️ Info</button>
+        
+        <!-- Support Button -->
+        <a href="https://ko-fi.com/aericode" target="_blank" rel="noopener" class="support-btn" title="Support on Ko-fi">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+            </svg>
+            Support
+        </a>
+    </div>
+
+    <!-- Video Grid -->
+    <div class="video-container" id="videoContainer"></div>
+
+    <!-- Shortcuts Modal -->
+    <div class="shortcuts-modal" id="shortcutsModal" onclick="hideShortcuts(event)">
+        <div class="shortcuts-content" onclick="event.stopPropagation()">
+            <h2>⌨ Keyboard Shortcuts</h2>
+            <div class="shortcut-row"><span>Play / Pause</span><span class="shortcut-key">Space</span></div>
+            <div class="shortcut-row"><span>Seek -5s / +5s</span><span class="shortcut-key">← →</span></div>
+            <div class="shortcut-row"><span>Seek -10s / +10s</span><span class="shortcut-key">J / L</span></div>
+            <div class="shortcut-row"><span>Frame step</span><span class="shortcut-key">, / .</span></div>
+            <div class="shortcut-row"><span>Volume</span><span class="shortcut-key">↑ ↓</span></div>
+            <div class="shortcut-row"><span>Mute</span><span class="shortcut-key">M</span></div>
+            <div class="shortcut-row"><span>Loop</span><span class="shortcut-key">R</span></div>
+            <div class="shortcut-row"><span>Desync Mode</span><span class="shortcut-key">D</span></div>
+            <div class="shortcut-row"><span>Fullscreen</span><span class="shortcut-key">F</span></div>
+            <div class="shortcut-row"><span>Audio to Video 1-9</span><span class="shortcut-key">1-9</span></div>
+            <div class="shortcut-row"><span>Close</span><span class="shortcut-key">Esc</span></div>
+        </div>
+    </div>
+
+    <!-- Info Modal -->
+    <div class="info-modal" id="infoModal" onclick="hideInfo(event)">
+        <div class="info-content" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="hideInfo(event)">✕</button>
+            
+            <h2>🎬 InfiniVids</h2>
+            <p class="tagline">Synchronized Multi-Video Player</p>
+            
+            <div class="info-section">
+                <h3>✨ Features</h3>
+                <ul>
+                    <li><strong>Synchronized Playback</strong> — Play, pause, and seek multiple videos together</li>
+                    <li><strong>Desync Mode</strong> — Let each video play independently with its own timeline</li>
+                    <li><strong>Infinite Looping</strong> — Shorter videos loop seamlessly while longer ones continue</li>
+                    <li><strong>Flexible Layout</strong> — Auto-grid or preset layouts, resize individual panels</li>
+                    <li><strong>Audio Control</strong> — All audio mixed, or single-video audio selection</li>
+                    <li><strong>Per-Video Offset</strong> — Fine-tune sync with +/- second offsets</li>
+                    <li><strong>Variable Speed</strong> — 0.25× to 2× playback speed</li>
+                    <li><strong>Frame Stepping</strong> — Navigate frame-by-frame for precision</li>
+                    <li><strong>Keyboard Shortcuts</strong> — Full keyboard control</li>
+                    <li><strong>Drag & Drop</strong> — Simply drop video files to load</li>
+                </ul>
+            </div>
+            
+            <div class="info-section security-section">
+                <h3>🔒 Privacy & Security</h3>
+                <div class="security-badges">
+                    <span class="badge">✓ Zero Tracking</span>
+                    <span class="badge">✓ No Analytics</span>
+                    <span class="badge">✓ No Cookies</span>
+                </div>
+                <ul>
+                    <li><strong>100% Local</strong> — All video processing happens in your browser</li>
+                    <li><strong>No Uploads</strong> — Your videos never leave your device</li>
+                    <li><strong>Offline Ready</strong> — Works without internet once loaded (save the page!)</li>
+                    <li><strong>No External Requests</strong> — No CDNs, no third-party scripts</li>
+                    <li><strong>Open Source</strong> — Inspect the code yourself</li>
+                </ul>
+            </div>
+            
+            <div class="info-footer">
+                <p>Made with ☕ by <a href="https://ko-fi.com/aericode" target="_blank" rel="noopener">aericode</a></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- JavaScript Modules (order matters) -->
+    <script src="./js/state.js"></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/layout.js"></script>
+    <script src="./js/playback.js"></script>
+    <script src="./js/audio.js"></script>
+    <script src="./js/slots.js"></script>
+    <script src="./js/keyboard.js"></script>
+    <script src="./js/main.js"></script>
+</body>
+</html>
