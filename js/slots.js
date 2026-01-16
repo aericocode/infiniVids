@@ -67,7 +67,7 @@ function addVideoSlot() {
         <div class="resize-handle" id="resize-${index}"
              onmousedown="startResize(event, ${index})"></div>
         <input type="file" class="file-input" id="fileInput-${index}" 
-               accept="video/*" onchange="loadVideo(${index}, this.files[0])">
+               accept="video/*" multiple onchange="handleFileInputChange(${index}, this.files)">
     `;
     
     // Add drag handlers to the wrapper
@@ -99,9 +99,10 @@ function addVideoSlot() {
         document.body.classList.remove('dragging-file');
         State.dragCounter = 0;
         
-        const files = e.dataTransfer.files;
-        if (files.length > 0 && files[0].type.startsWith('video/')) {
-            loadVideo(index, files[0]);
+        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+        if (files.length > 0) {
+            // Load first video into this slot, distribute rest to available slots
+            loadMultipleVideos(files, index);
         }
     });
     
@@ -128,6 +129,69 @@ function addVideoSlot() {
             individualProgress.style.display = 'flex';
         }
     }
+    
+    return index;
+}
+
+/**
+ * Load multiple videos into slots, starting at preferredStartIndex
+ * - First video always goes to preferredStartIndex (replacing if occupied)
+ * - Remaining videos go to empty slots first
+ * - Only create new slots if no empty slots remain
+ */
+function loadMultipleVideos(files, preferredStartIndex = null) {
+    if (!files || files.length === 0) return;
+    
+    const videoFiles = Array.isArray(files) ? files : Array.from(files);
+    let loadedCount = 0;
+    
+    for (const file of videoFiles) {
+        let targetIndex = -1;
+        
+        // First file always goes to the preferred slot (replacing existing)
+        if (loadedCount === 0 && preferredStartIndex !== null) {
+            targetIndex = preferredStartIndex;
+        }
+        
+        // For subsequent files, find first available empty slot
+        if (targetIndex === -1) {
+            targetIndex = State.videoSlots.findIndex(slot => !slot.loaded);
+        }
+        
+        // If no empty slots, add a new one
+        if (targetIndex === -1) {
+            targetIndex = addVideoSlot();
+        }
+        
+        // Load the video
+        loadVideo(targetIndex, file);
+        loadedCount++;
+    }
+    
+    if (loadedCount > 1) {
+        showToast(`Loaded ${loadedCount} videos`);
+    }
+}
+
+/**
+ * Handle file input change (supports multiple files)
+ */
+function handleFileInputChange(index, files) {
+    if (!files || files.length === 0) return;
+    
+    const videoFiles = Array.from(files).filter(f => f.type.startsWith('video/'));
+    if (videoFiles.length === 0) return;
+    
+    if (videoFiles.length === 1) {
+        // Single file - load directly into this slot
+        loadVideo(index, videoFiles[0]);
+    } else {
+        // Multiple files - use multi-load logic
+        loadMultipleVideos(videoFiles, index);
+    }
+    
+    // Reset the input so the same files can be selected again
+    document.getElementById(`fileInput-${index}`).value = '';
 }
 
 function showOverlay(index) {
@@ -217,20 +281,26 @@ function removeVideoSlot(index) {
     State.videoSlots.splice(index, 1);
     
     document.getElementById('videoContainer').innerHTML = '';
+    
+    // Rebuild remaining slots with new indices
     const oldSlots = [...State.videoSlots];
     State.videoSlots = [];
-    oldSlots.forEach((slot, i) => {
-        addVideoSlot();
+    
+    oldSlots.forEach((slot) => {
+        const newIndex = addVideoSlot();
         if (slot.loaded && slot.video) {
-            const video = document.getElementById(`video-${i}`);
+            const video = document.getElementById(`video-${newIndex}`);
+            const placeholder = document.getElementById(`placeholder-${newIndex}`);
+            const label = document.getElementById(`label-${newIndex}`);
+            
             video.src = slot.video.src;
             video.style.display = 'block';
-            document.getElementById(`placeholder-${i}`).style.display = 'none';
-            State.videoSlots[i].loaded = true;
-            State.videoSlots[i].offset = slot.offset;
-            State.videoSlots[i].volume = slot.volume;
-            State.videoSlots[i].gridSpan = slot.gridSpan;
-            State.videoSlots[i].duration = slot.duration;
+            placeholder.style.display = 'none';
+            label.textContent = `${newIndex + 1}: ${slot.video.dataset?.name || `Video ${newIndex + 1}`}`;
+            
+            State.videoSlots[newIndex].loaded = true;
+            State.videoSlots[newIndex].video = video;
+            State.videoSlots[newIndex].duration = slot.duration;
         }
     });
     
@@ -322,6 +392,9 @@ function loadVideo(index, file) {
     
     const name = file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name;
     label.textContent = `${index + 1}: ${name}`;
+    
+    // Store original filename for reference
+    video.dataset.name = name;
     
     State.videoSlots[index].loaded = true;
     State.videoSlots[index].video = video;
@@ -425,13 +498,12 @@ function setupGlobalDragHandlers() {
         State.dragCounter = 0;
         document.body.classList.remove('dragging-file');
         
+        // Only handle if not dropped on a specific wrapper (wrapper handles its own drops)
         const wrapper = e.target.closest('.video-wrapper');
         if (!wrapper && e.dataTransfer.files.length > 0) {
-            const file = e.dataTransfer.files[0];
-            if (file.type.startsWith('video/')) {
-                let targetIndex = State.videoSlots.findIndex(s => !s.loaded);
-                if (targetIndex === -1) targetIndex = 0;
-                loadVideo(targetIndex, file);
+            const videoFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+            if (videoFiles.length > 0) {
+                loadMultipleVideos(videoFiles);
             }
         }
     });
@@ -439,6 +511,8 @@ function setupGlobalDragHandlers() {
 
 // Export to global scope
 window.addVideoSlot = addVideoSlot;
+window.loadMultipleVideos = loadMultipleVideos;
+window.handleFileInputChange = handleFileInputChange;
 window.showOverlay = showOverlay;
 window.scheduleHideOverlay = scheduleHideOverlay;
 window.updateVideoCount = updateVideoCount;
