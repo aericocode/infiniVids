@@ -32,6 +32,7 @@ function addVideoSlot() {
             <div class="overlay-top">
                 <span class="video-label" id="label-${index}">Video ${index + 1}</span>
                 <div class="overlay-buttons">
+                    <button onclick="enterVideoFullscreen(${index}); event.stopPropagation();" title="Fullscreen">⛶</button>
                     <button onclick="setActiveAudio(${index}); event.stopPropagation();" title="Set audio source">🔊</button>
                     <button onclick="toggleMute(${index}); event.stopPropagation();" id="muteBtn-${index}" title="Mute">🔈</button>
                     <button onclick="triggerFileInput(${index}); event.stopPropagation();" title="Load">📁</button>
@@ -60,7 +61,7 @@ function addVideoSlot() {
                 <span class="offset-display" id="offsetDisplay-${index}">in sync</span>
                 <label>Vol:</label>
                 <input type="range" id="volume-${index}" min="0" max="100" value="100"
-                       onchange="updateIndividualVolume(${index})"
+                       oninput="updateIndividualVolume(${index})"
                        onclick="event.stopPropagation()">
             </div>
         </div>
@@ -390,11 +391,11 @@ function loadVideo(index, file) {
     video.style.display = 'block';
     placeholder.style.display = 'none';
     
-    const name = file.name.length > 25 ? file.name.substring(0, 22) + '...' : file.name;
-    label.textContent = `${index + 1}: ${name}`;
+    // Let CSS handle truncation dynamically based on available space
+    label.textContent = `${index + 1}: ${file.name}`;
     
     // Store original filename for reference
-    video.dataset.name = name;
+    video.dataset.name = file.name;
     
     State.videoSlots[index].loaded = true;
     State.videoSlots[index].video = video;

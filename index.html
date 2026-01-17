@@ -95,7 +95,7 @@
 
         <div class="ribbon-group">
             <label>🔊</label>
-            <input type="range" id="masterVolume" min="0" max="100" value="100" onchange="updateMasterVolume()">
+            <input type="range" id="masterVolume" min="0" max="100" value="100" oninput="updateMasterVolume()">
             <span class="vol-display" id="volumeDisplay">100%</span>
         </div>
 
@@ -130,6 +130,7 @@
             <div class="shortcut-row"><span>Loop</span><span class="shortcut-key">R</span></div>
             <div class="shortcut-row"><span>Desync Mode</span><span class="shortcut-key">D</span></div>
             <div class="shortcut-row"><span>Fullscreen</span><span class="shortcut-key">F</span></div>
+            <div class="shortcut-row"><span>Exit Video Fullscreen</span><span class="shortcut-key">Esc</span></div>
             <div class="shortcut-row"><span>Audio to Video 1-9</span><span class="shortcut-key">1-9</span></div>
             <div class="shortcut-row"><span>Close</span><span class="shortcut-key">Esc</span></div>
         </div>
@@ -156,6 +157,7 @@
                     <li><strong>Frame Stepping</strong> — Navigate frame-by-frame for precision</li>
                     <li><strong>Keyboard Shortcuts</strong> — Full keyboard control</li>
                     <li><strong>Multi-Video Drag & Drop</strong> — Drop multiple videos at once to auto-fill slots</li>
+                    <li><strong>Per-Video Fullscreen</strong> — Expand any video to fullscreen with playback controls</li>
                 </ul>
             </div>
             
@@ -191,6 +193,7 @@
     <script src="./js/playback.js"></script>
     <script src="./js/audio.js"></script>
     <script src="./js/slots.js"></script>
+    <script src="./js/fullscreen.js"></script>
     <script src="./js/keyboard.js"></script>
     <script src="./js/main.js"></script>
 </body>

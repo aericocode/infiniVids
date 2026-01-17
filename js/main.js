@@ -7,6 +7,9 @@ function init() {
     const count = parseInt(document.getElementById('videoCount').value);
     State.videoSlots = [];
     
+    // Apply initial master volume from slider (browser may remember previous value)
+    updateMasterVolume();
+    
     for (let i = 0; i < count; i++) {
         addVideoSlot();
     }
