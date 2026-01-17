@@ -2,6 +2,8 @@
 
 A synchronized multi-video player that runs entirely in your browser. Play, sync, and compare multiple videos side-by-side with precise control.
 
+**[Launch InfiniVids](https://aericocode.github.io/infiniVids/)** — no install, no uploads, just open and drop your videos
+
 ## Features
 
 - **Synchronized Playback** — Play, pause, and seek multiple videos together
