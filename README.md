@@ -97,4 +97,4 @@ Each video has an offset control (visible on hover):
 
 ---
 
-Made with ☕ by [aericode](https://ko-fi.com/aericode)
+Made with 🌿 by [aericode](https://ko-fi.com/aericode)
