@@ -66,7 +66,7 @@ function addVideoSlot() {
             </div>
         </div>
         <div class="resize-handle" id="resize-${index}"
-             onmousedown="startResize(event, ${index})"></div>
+             onmousedown="startResize(event, ${index})" style="display:none !important;"></div>
         <input type="file" class="file-input" id="fileInput-${index}" 
                accept="video/*" multiple onchange="handleFileInputChange(${index}, this.files)">
     `;
