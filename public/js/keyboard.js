@@ -79,6 +79,9 @@ function initKeyboardShortcuts() {
                 const num = parseInt(e.key) - 1;
                 if (num < State.videoSlots.length) setActiveAudio(num);
                 break;
+            case 's': case 'S': 
+                toggleStack(); 
+                break;
         }
     });
 }

@@ -980,3 +980,249 @@ body.desync-mode .video-wrapper.audio-active {
 .fs-ctrl-btn:not(.fs-play-btn) svg {
     margin-bottom: 4px;
 }
+
+/* ========== Stack Mode ========== */
+:root { --stack: #a855f7; }
+
+.ribbon button.stack-btn.active {
+    background: var(--stack);
+    border-color: var(--stack);
+    color: #fff;
+}
+
+.ribbon button.stack-btn:hover {
+    background: var(--stack);
+    border-color: var(--stack);
+}
+
+/* In stack mode, wrappers are all positioned in grid cell 1/1 */
+body.stack-mode .video-container {
+    background: #000 !important;
+}
+
+body.stack-mode .video-wrapper {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+
+/* First wrapper gets the hover overlay; others suppress their overlays */
+body.stack-mode .video-wrapper:not(:last-child) .video-overlay {
+    display: none;
+}
+
+/* ========== Export Modal ========== */
+.export-modal {
+    display: flex;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    align-items: center;
+    justify-content: center;
+    z-index: 1100;
+    padding: 20px;
+}
+
+.export-content {
+    background: var(--bg-secondary);
+    padding: 28px 30px;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 440px;
+    position: relative;
+    border: 1px solid var(--border);
+}
+
+.export-content h2 {
+    color: var(--accent);
+    font-size: 1.2rem;
+    margin-bottom: 4px;
+}
+
+.export-subtitle {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+}
+
+.export-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 20px;
+}
+
+.export-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.export-field label {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.export-field input[type="text"],
+.export-field select {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    padding: 6px 10px;
+    border-radius: 5px;
+    font-size: 0.8rem;
+}
+
+.export-field input[type="text"]:focus,
+.export-field select:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.export-row {
+    display: flex;
+    gap: 14px;
+}
+
+.export-row .export-field {
+    flex: 1;
+}
+
+/* Opacity table */
+.export-opacity-table {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background: var(--bg-tertiary);
+    border-radius: 5px;
+    padding: 8px 10px;
+}
+
+.export-opacity-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+}
+
+.export-opacity-name {
+    color: var(--text-secondary);
+    width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.export-opacity-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.export-opacity-bar {
+    height: 100%;
+    background: var(--stack, #a855f7);
+    border-radius: 3px;
+    transition: width 0.2s;
+}
+
+.export-opacity-pct {
+    color: var(--text-primary);
+    min-width: 34px;
+    text-align: right;
+    font-family: monospace;
+    font-size: 0.72rem;
+}
+
+/* Progress */
+.export-progress-area {
+    margin-bottom: 16px;
+}
+
+.export-progress-label {
+    font-size: 0.82rem;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.export-progress-track {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.export-progress-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 4px;
+    transition: width 0.15s;
+}
+
+.export-progress-sub {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-top: 5px;
+    font-family: monospace;
+}
+
+/* Actions */
+.export-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.export-cancel-btn {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    padding: 7px 16px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.15s;
+}
+
+.export-cancel-btn:hover {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+}
+
+.export-start-btn {
+    background: var(--stack, #a855f7);
+    color: #fff;
+    border: none;
+    padding: 7px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.15s;
+}
+
+.export-start-btn:hover {
+    filter: brightness(1.15);
+}
+
+.export-start-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Export ribbon button — matches stack color */
+.export-ribbon-btn {
+    background: var(--stack, #a855f7) !important;
+    border-color: var(--stack, #a855f7) !important;
+    color: #fff !important;
+    font-weight: 600;
+}
+.export-ribbon-btn:hover {
+    filter: brightness(1.15);
+}

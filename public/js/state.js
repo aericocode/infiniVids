@@ -17,7 +17,12 @@ const State = {
     gridConfig: { cols: 2, rows: 2 },
     dragCounter: 0,
     masterTime: 0,
-    resizing: null
+    resizing: null,
+    isStacked: false,
+    stackBlend: 'normal',
+    stackOpacity: 1.0,
+    stackBias: -0.7,
+    stackBlend: 'plus-lighter',
 };
 
 // Make state globally accessible

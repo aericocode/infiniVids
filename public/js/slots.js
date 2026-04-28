@@ -117,7 +117,8 @@ function addVideoSlot() {
         volume: 1,
         muted: false,
         gridSpan: { col: 1, row: 1 },
-        duration: 0
+        duration: 0,
+        sourceFile: null 
     });
     
     document.getElementById('videoCount').value = State.videoSlots.length;
@@ -290,6 +291,8 @@ function removeVideoSlot(index) {
     oldSlots.forEach((slot) => {
         const newIndex = addVideoSlot();
         if (slot.loaded && slot.video) {
+            applyStackStyles(); // Ensure styles are correct for new layout
+            applyLoopAttribute();
             const video = document.getElementById(`video-${newIndex}`);
             const placeholder = document.getElementById(`placeholder-${newIndex}`);
             const label = document.getElementById(`label-${newIndex}`);
@@ -399,9 +402,19 @@ function loadVideo(index, file) {
     
     State.videoSlots[index].loaded = true;
     State.videoSlots[index].video = video;
+    State.videoSlots[index].sourceFile = file;
     
     video.playbackRate = parseFloat(document.getElementById('playbackSpeed').value);
     video.loop = State.isLooping;
+    video.addEventListener('pause', () => {
+        // If the browser paused us at the end but we're supposed to be looping and playing,
+        // force a restart. Guard against the user's intentional pause.
+        if (State.isPlaying && State.isLooping &&
+            video.currentTime >= video.duration - 0.25 && video.duration > 0) {
+            video.currentTime = 0;
+            video.play().catch(() => {});
+        }
+    });
     updateIndividualVolume(index);
     
     showToast(`Loaded: ${file.name}`);

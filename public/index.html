@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InfiniVids - Multi-Video Sync Player</title>
-    <link rel="stylesheet" href="./public/css/main.css">
-    <link rel="icon" type="image/svg+xml" href="./public/images/favicon.svg">
+    <link rel="stylesheet" href="./css/main.css">
+    <link rel="icon" type="image/svg+xml" href="./images/favicon.svg">
 </head>
 <body>
     <!-- Single Ribbon -->
@@ -15,7 +15,7 @@
         <div class="ribbon-divider"></div>
         
         <div class="ribbon-group">
-            <input type="number" id="videoCount" min="1" max="24" value="4" title="Number of videos" onchange="updateVideoCount()">
+            <input type="number" id="videoCount" min="1" max="24" value="2" title="Number of videos" onchange="updateVideoCount()">
         </div>
 
         <div class="ribbon-group">
@@ -62,6 +62,14 @@
             <input type="range" id="stackBias" min="-1" max="1" step="0.05" value="-0.7"
                 oninput="updateStackBias(this.value)" style="width:70px;">
             <span id="stackBiasVal" style="font-size:0.7rem;color:var(--text-secondary);min-width:48px;">Equal</span>
+
+            <div class="ribbon-divider"></div>
+
+            <button id="exportBtn" class="export-ribbon-btn"
+                    onclick="showExportModal()"
+                    title="Export stacked video to MP4"
+                    style="display:none;">⬇ Export</button>
+
         </div>
 
         <!-- Desync Toggle -->
@@ -198,15 +206,15 @@
     <div class="toast" id="toast"></div>
 
     <!-- JavaScript Modules (order matters) -->
-    <script src="./public/js/state.js"></script>
-    <script src="./public/js/utils.js"></script>
-    <script src="./public/js/layout.js"></script>
-    <script src="./public/js/playback.js"></script>
-    <script src="./public/js/audio.js"></script>
-    <script src="./public/js/slots.js"></script>
-    <script src="./public/js/fullscreen.js"></script>
-    <script src="./public/js/keyboard.js"></script>
-    <script src="./public/js/main.js"></script>
-    <script src="./public/js/export.js"></script>
+    <script src="./js/state.js"></script>
+    <script src="./js/utils.js"></script>
+    <script src="./js/layout.js"></script>
+    <script src="./js/playback.js"></script>
+    <script src="./js/audio.js"></script>
+    <script src="./js/slots.js"></script>
+    <script src="./js/fullscreen.js"></script>
+    <script src="./js/keyboard.js"></script>
+    <script src="./js/main.js"></script>
+    <script src="./js/export.js"></script>
 </body>
 </html>

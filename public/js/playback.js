@@ -169,14 +169,23 @@ function stepFrame(direction) {
 function handleTimeUpdate(index) {
     const slot = State.videoSlots[index];
     if (!slot.loaded) return;
-    
-    // Always update individual progress bar if it exists
+
     updateIndividualProgress(index);
-    
-    if (State.isDesynced) {
-        // In desync mode, don't update master time
-        return;
+
+    // Proactive loop in stack mode — native loop is unreliable with blend modes
+    if (State.isStacked && State.isLooping && slot.duration > 0) {
+        const video = document.getElementById(`video-${index}`);
+        // Restart slightly before the true end to avoid the pause gap
+        if (video.currentTime >= slot.duration - 0.15) {
+            video.currentTime = 0;
+            if (State.isPlaying && video.paused) {
+                video.play().catch(() => {});
+            }
+            return;
+        }
     }
+
+    if (State.isDesynced) return;
     
     let longestIndex = -1;
     let longestDuration = 0;
@@ -219,16 +228,19 @@ function handleTimeUpdate(index) {
 function updateIndividualProgress(index) {
     const slot = State.videoSlots[index];
     if (!slot.loaded) return;
-    
     const video = document.getElementById(`video-${index}`);
-    const progressFill = document.getElementById(`individualProgressFill-${index}`);
-    const timeDisplay = document.getElementById(`individualTime-${index}`);
-    
-    if (progressFill && timeDisplay) {
-        const percent = slot.duration > 0 ? (video.currentTime / slot.duration) * 100 : 0;
-        progressFill.style.width = `${Math.min(100, percent)}%`;
-        timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(slot.duration)}`;
-    }
+    const percent = slot.duration > 0 ? (video.currentTime / slot.duration) * 100 : 0;
+    const timeStr = `${formatTime(video.currentTime)} / ${formatTime(slot.duration)}`;
+
+    const fill = document.getElementById(`individualProgressFill-${index}`);
+    const time = document.getElementById(`individualTime-${index}`);
+    if (fill) fill.style.width = `${Math.min(100, percent)}%`;
+    if (time) time.textContent = timeStr;
+
+    const stackedFill = document.getElementById(`stackedFill-${index}`);
+    const stackedTime = document.getElementById(`stackedTime-${index}`);
+    if (stackedFill) stackedFill.style.width = `${Math.min(100, percent)}%`;
+    if (stackedTime) stackedTime.textContent = timeStr;
 }
 
 function updateProgressDisplay(time) {
@@ -242,39 +254,37 @@ function updateProgressDisplay(time) {
 
 function handleEnded(index) {
     const slot = State.videoSlots[index];
-    
-    if (State.isDesynced) {
-        // In desync mode, loop individually if looping is on
-        if (State.isLooping && slot.loaded) {
-            const video = document.getElementById(`video-${index}`);
-            video.currentTime = 0;
-            if (State.isPlaying) {
-                video.play().catch(() => {});
-            }
+    if (!slot.loaded) return;
+
+    if (State.isLooping) {
+        const video = document.getElementById(`video-${index}`);
+
+        // Force native loop on, belt-and-suspenders
+        video.loop = true;
+
+        // Manual restart regardless of State.isPlaying — if the video ended
+        // while we thought we were playing, we want it back. If paused intentionally,
+        // the pause call at the end keeps it paused.
+        const wasPlaying = State.isPlaying || !video.paused;
+        video.currentTime = 0;
+
+        if (wasPlaying) {
+            // Double-rAF to let the seek settle before play (Chromium quirk with blend modes)
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    video.play().catch(() => {});
+                });
+            });
         }
         return;
     }
-    
-    if (State.isLooping && slot.loaded) {
-        const video = document.getElementById(`video-${index}`);
-        const offset = parseFloat(document.getElementById(`offset-${index}`).value) || 0;
-        const videoDuration = slot.duration;
-        
-        if (videoDuration > 0) {
-            const expectedTime = (State.masterTime + offset) % videoDuration;
-            video.currentTime = expectedTime;
-            if (State.isPlaying) {
-                video.play().catch(() => {});
-            }
-        }
-    } else if (!State.isLooping) {
+
+    // Not looping: stop when the longest video ends (sync mode only)
+    if (!State.isDesynced) {
         let longestDuration = 0;
         State.videoSlots.forEach(s => {
-            if (s.loaded && s.duration > longestDuration) {
-                longestDuration = s.duration;
-            }
+            if (s.loaded && s.duration > longestDuration) longestDuration = s.duration;
         });
-        
         if (State.masterTime >= longestDuration - 0.1) {
             State.isPlaying = false;
             document.getElementById('playBtn').innerHTML = '▶ Play';
@@ -295,12 +305,20 @@ function updateSpeed() {
 function toggleLoop() {
     State.isLooping = !State.isLooping;
     document.getElementById('loopBtn').classList.toggle('active', State.isLooping);
+    applyLoopAttribute();
+    showToast(`Loop: ${State.isLooping ? 'ON' : 'OFF'}`);
+}
+
+function applyLoopAttribute() {
+    // Native loop works in both sync and desync modes.
+    // In sync mode, the longest video drives masterTime, shorter ones loop natively.
+    // In desync mode, each video loops independently.
     State.videoSlots.forEach((slot, i) => {
         if (slot.loaded) {
-            document.getElementById(`video-${i}`).loop = State.isLooping;
+            const video = document.getElementById(`video-${i}`);
+            video.loop = State.isLooping;
         }
     });
-    showToast(`Loop: ${State.isLooping ? 'ON' : 'OFF'}`);
 }
 
 function updateDuration() {
@@ -335,39 +353,123 @@ function updateDesyncUI() {
     const progressGroup = document.querySelector('.progress-group');
     const offsetInputs = document.querySelectorAll('.overlay-bottom input[type="number"]');
     const offsetDisplays = document.querySelectorAll('.offset-display');
-    const offsetLabels = document.querySelectorAll('.overlay-bottom label:first-child');
-    
+
     if (State.isDesynced) {
-        // Disable global progress bar
         progressGroup.classList.add('disabled');
-        
-        // Hide offset controls (not relevant in desync mode)
-        offsetInputs.forEach(input => input.closest('.overlay-bottom')?.querySelector('label:first-child')?.parentElement && (input.style.display = 'none'));
+        offsetInputs.forEach(input => input.style.display = 'none');
         offsetDisplays.forEach(display => display.style.display = 'none');
-        
-        // Show individual progress bars
-        State.videoSlots.forEach((slot, i) => {
-            const individualProgress = document.getElementById(`individualProgress-${i}`);
-            if (individualProgress) {
-                individualProgress.style.display = 'flex';
-            }
-        });
+
+        if (State.isStacked) {
+            showStackedProgressBars();
+        } else {
+            hideStackedProgressBars();
+            State.videoSlots.forEach((slot, i) => {
+                const p = document.getElementById(`individualProgress-${i}`);
+                if (p) p.style.display = 'flex';
+            });
+        }
     } else {
-        // Enable global progress bar
         progressGroup.classList.remove('disabled');
-        
-        // Show offset controls
         offsetInputs.forEach(input => input.style.display = '');
         offsetDisplays.forEach(display => display.style.display = '');
-        
-        // Hide individual progress bars
+        hideStackedProgressBars();
         State.videoSlots.forEach((slot, i) => {
-            const individualProgress = document.getElementById(`individualProgress-${i}`);
-            if (individualProgress) {
-                individualProgress.style.display = 'none';
-            }
+            const p = document.getElementById(`individualProgress-${i}`);
+            if (p) p.style.display = 'none';
         });
     }
+}
+
+function showStackedProgressBars() {
+    let overlay = document.getElementById('stackedProgressOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'stackedProgressOverlay';
+        overlay.style.cssText = `
+            position: absolute;
+            left: 0; right: 0; 
+            bottom: 50%;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.2);
+            z-index: 1000;
+            pointer-events: none;
+        `;
+        document.getElementById('videoContainer').appendChild(overlay);
+    }
+
+    overlay.innerHTML = '';
+    State.videoSlots.forEach((slot, i) => {
+        if (!slot.loaded) return;
+        const row = document.createElement('div');
+        row.style.cssText = `
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: auto;
+            color: #fff;
+            font-size: 0.75rem;
+        `;
+        row.innerHTML = `
+            <span style="min-width:120px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:0.9;">
+                ${slot.video.dataset?.name || `Video ${i + 1}`}
+            </span>
+            <div class="progress-bar" id="stackedBar-${i}"
+                 style="flex:1;height:8px;cursor:pointer;"
+                 onclick="seekToIndividual(event, ${i})">
+                <div class="progress-fill" id="stackedFill-${i}" style="width:0%;"></div>
+            </div>
+            <span id="stackedTime-${i}" style="min-width:90px;text-align:right;font-variant-numeric:tabular-nums;opacity:0.9;">
+                00:00 / 00:00
+            </span>
+        `;
+        overlay.appendChild(row);
+    });
+
+    initStackActivityTracking();
+}
+
+function hideStackedProgressBars() {
+    const overlay = document.getElementById('stackedProgressOverlay');
+    if (overlay) overlay.remove();
+    clearTimeout(_stackActivityTimer);
+    const container = document.getElementById('videoContainer');
+    if (container) container.style.cursor = '';
+}
+
+let _stackActivityTimer = null;
+
+function initStackActivityTracking() {
+    const container = document.getElementById('videoContainer');
+    if (container.dataset.activityBound) return;
+    container.dataset.activityBound = '1';
+
+    const onMove = () => {
+        if (!(State.isStacked && State.isDesynced)) return;
+        const overlay = document.getElementById('stackedProgressOverlay');
+        if (overlay) overlay.style.opacity = '1';
+        container.style.cursor = '';
+
+        clearTimeout(_stackActivityTimer);
+        _stackActivityTimer = setTimeout(() => {
+            if (!(State.isStacked && State.isDesynced)) return;
+            const o = document.getElementById('stackedProgressOverlay');
+            if (o) o.style.opacity = '0';
+            container.style.cursor = 'none';
+        }, 2000);
+    };
+
+    const onLeave = () => {
+        clearTimeout(_stackActivityTimer);
+        const overlay = document.getElementById('stackedProgressOverlay');
+        if (overlay) overlay.style.opacity = '0';
+        container.style.cursor = '';
+    };
+
+    container.addEventListener('mousemove', onMove);
+    container.addEventListener('mouseleave', onLeave);
 }
 
 // Snap all videos back to sync when leaving desync mode
@@ -418,3 +520,10 @@ window.updateDuration = updateDuration;
 window.toggleDesync = toggleDesync;
 window.updateDesyncUI = updateDesyncUI;
 window.snapToSync = snapToSync;
+
+window.applyLoopAttribute = applyLoopAttribute;
+
+window.showStackedProgressBars = showStackedProgressBars;
+window.hideStackedProgressBars = hideStackedProgressBars;
+
+window.initStackActivityTracking = initStackActivityTracking;
