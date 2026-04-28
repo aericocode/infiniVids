@@ -2,7 +2,7 @@
 
 A synchronized multi-video player that runs entirely in your browser. Play, sync, compare, and **stack-blend** multiple videos with precise control.
 
-**[Launch InfiniVids](https://infinivids.aericode.deno.net/)** — no install, no uploads, just open and drop your videos
+**[Launch InfiniVids](https://aericocode.github.io/infiniVids/)** — no install, no uploads, just open and drop your videos
 
 > The hosted version supports everything **except export**. To export stacked videos to MP4, run the local version (see [Local Setup](#local-setup-with-export)).
 
@@ -24,7 +24,7 @@ A synchronized multi-video player that runs entirely in your browser. Play, sync
 
 ## Getting Started
 
-1. Open the [hosted version](https://infinivids.aericode.deno.net/) (or `index.html` locally)
+1. Open the [hosted version](https://aericocode.github.io/infiniVids/) (or `index.html` locally)
 2. Drop video files onto the slots, or click the 📁 button to browse
 3. Press Play or hit Space to start playback
 
