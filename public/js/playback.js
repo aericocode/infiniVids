@@ -172,8 +172,11 @@ function handleTimeUpdate(index) {
 
     updateIndividualProgress(index);
 
-    // Proactive loop in stack mode — native loop is unreliable with blend modes
-    if (State.isStacked && State.isLooping && slot.duration > 0) {
+    // Proactive loop in stack OR desync mode — native loop is unreliable when
+    // multiple decoders run concurrently (especially with blend modes), and
+    // the ended event sometimes never fires, leaving the video stalled at
+    // its final frame for 10+ seconds.
+    if (State.isLooping && (State.isStacked || State.isDesynced) && slot.duration > 0) {
         const video = document.getElementById(`video-${index}`);
         // Restart slightly before the true end to avoid the pause gap
         if (video.currentTime >= slot.duration - 0.15) {
