@@ -50,6 +50,7 @@ function toggleStack() {
     }
 }
 
+
 // Start the application when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
 

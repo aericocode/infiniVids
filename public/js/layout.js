@@ -149,11 +149,33 @@ function applyLayoutPreset() {
     recalculateLayout();
 }
 
-function updateScalingMode() {
-    State.scalingMode = document.getElementById('scalingMode').value;
-    State.videoSlots.forEach((slot, i) => {
-        document.getElementById(`content-${i}`).className = `video-content ${State.scalingMode}`;
+// function updateScalingMode() {
+//     State.scalingMode = document.getElementById('scalingMode').value;
+//     State.videoSlots.forEach((slot, i) => {
+//         document.getElementById(`content-${i}`).className = `video-content ${State.scalingMode}`;
+//     });
+// }
+
+
+
+function toggleScalingMode() {
+    const next = State.scalingMode === 'native' ? 'fill' : 'native';
+    State.scalingMode = next;
+    State.videoSlots.forEach((_, i) => {
+        const el = document.getElementById(`content-${i}`);
+        if (el) el.className = `video-content ${next}`;
     });
+    const btn = document.getElementById('scaleToggleBtn');
+    if (btn) btn.textContent = next === 'native' ? '⤢ Fit' : '⤡ Fill';
+}
+
+function toggleAudioMode() {
+    const next = State.audioMode === 'single' ? 'all' : 'single';
+    State.audioMode = next;
+    // call your existing audio update logic
+    if (typeof updateAudioMode === 'function') updateAudioMode();
+    const btn = document.getElementById('audioToggleBtn');
+    if (btn) btn.textContent = next === 'single' ? '🔉 Single' : '🔊 All';
 }
 
 // Resize handling
@@ -268,9 +290,12 @@ window.updateStackBlend = updateStackBlend;
 window.updateStackOpacity = updateStackOpacity;
 window.recalculateLayout = recalculateLayout;
 window.applyLayoutPreset = applyLayoutPreset;
-window.updateScalingMode = updateScalingMode;
+// window.updateScalingMode = updateScalingMode;
 window.startResize = startResize;
 window.doResize = doResize;
 window.stopResize = stopResize;
 window.initResizeHandlers = initResizeHandlers;
 window.computeStackOpacities = computeStackOpacities;
+
+window.toggleScalingMode = toggleScalingMode;
+window.toggleAudioMode = toggleAudioMode;

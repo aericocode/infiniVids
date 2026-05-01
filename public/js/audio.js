@@ -4,14 +4,14 @@
  */
 
 function updateAudioMode() {
-    State.audioMode = document.getElementById('audioMode').value;
+    State.audioMode = document.getElementById('audioToggleBtn').value;
     updateAudioIndicators();
     applyAudioSettings();
 }
 
 function setActiveAudio(index) {
     if (State.audioMode === 'all') {
-        document.getElementById('audioMode').value = 'single';
+        document.getElementById('audioToggleBtn').value = 'single';
         State.audioMode = 'single';
     }
     State.activeAudioSlot = index;

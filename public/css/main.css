@@ -1226,3 +1226,32 @@ body.stack-mode .video-wrapper:not(:last-child) .video-overlay {
 .export-ribbon-btn:hover {
     filter: brightness(1.15);
 }
+
+.toggle-btn {
+    min-width: auto;
+    text-align: left;
+}
+
+.play-btn.icon-only {
+    min-width: 36px;
+    padding: 4px 10px;
+    font-size: 14px;
+}
+.speed-select {
+    width: 64px;
+    padding: 2px 4px;
+}
+.support-heart {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ff6b9d;
+    text-decoration: none;
+    padding: 4px 6px;
+    border-radius: 4px;
+    transition: transform 0.15s, color 0.15s;
+}
+.support-heart:hover {
+    color: #ff4778;
+    transform: scale(1.15);
+}
