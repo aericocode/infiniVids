@@ -190,7 +190,7 @@ async function startExport() {
     document.getElementById('exportProgressArea').style.display = 'block';
     document.getElementById('exportActions').style.display = 'none';
     document.getElementById('exportCancelArea').style.display = 'flex';
-    setExportProgress(0, 'Uploading…');
+    setExportProgress(0, 'Processing…');
 
     // Pause player while encoding (browser playing the same files would be wasteful).
     const wasPlaying = State.isPlaying;

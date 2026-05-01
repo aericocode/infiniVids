@@ -336,6 +336,10 @@ function removeVideoSlot(index) {
 }
 
 function removeVideo(index) {
+    if (typeof invalidateBeatsForSlot === 'function') {
+        invalidateBeatsForSlot(index);
+    }
+    
     // Preserve playback state
     const wasPlaying = State.isPlaying;
     const savedMasterTime = State.masterTime;
@@ -384,8 +388,14 @@ function triggerFileInput(index) {
 
 function loadVideo(index, file) {
     if (!file) return;
+
+    // Invalidate cached beats for this slot — new video, new audio
+    if (typeof invalidateBeatsForSlot === 'function') {
+        invalidateBeatsForSlot(index);
+    }
     
     const video = document.getElementById(`video-${index}`);
+
     const placeholder = document.getElementById(`placeholder-${index}`);
     const label = document.getElementById(`label-${index}`);
     

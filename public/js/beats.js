@@ -16,12 +16,19 @@ const PRESETS = {
 };
 
 const BEAT_CONFIG = {
-    preset: 'kick',
-    lookahead: 5,
+    preset: 'broad',
+    lookahead: 5,           // default 5s, range 3.5-7.5
     tickLeadMs: 30,
     overlayHeight: 90,
     overlayOffsetBottom: 70,
-    playheadXFrac: 0.2,
+    playheadXFrac: 0.5,     // center
+    barSize: 'medium',      // small / medium / large
+};
+
+const BAR_SIZES = {
+    small:  { height: 60, baseR: 5, pulseExtra: 8  },
+    medium: { height: 90, baseR: 8, pulseExtra: 12 },
+    large:  { height: 130, baseR: 12, pulseExtra: 18 },
 };
 
 // Per-slot beat data: { slotIndex: { beats, bpm, file: File } }
@@ -48,7 +55,9 @@ const BeatBarState = {
 function toggleBeats() {
     BeatBarState.enabled = !BeatBarState.enabled;
     const btn = document.getElementById('beatsBtn');
+    const controls = document.getElementById('beatsControls');
     if (btn) btn.classList.toggle('active', BeatBarState.enabled);
+    if (controls) controls.style.display = BeatBarState.enabled ? '' : 'none';
 
     if (BeatBarState.enabled) {
         const target = pickActiveAudioSlot();
@@ -56,6 +65,7 @@ function toggleBeats() {
             showToast('Load a video first');
             BeatBarState.enabled = false;
             if (btn) btn.classList.remove('active');
+            if (controls) controls.style.display = 'none';
             return;
         }
         showBeatBar(target);
@@ -146,6 +156,9 @@ function hideBeatBar() {
 }
 
 function attachOverlayToSlot(slotIndex) {
+    const h = BAR_SIZES[BEAT_CONFIG.barSize]?.height || BEAT_CONFIG.overlayHeight;
+    BeatBarState.overlay.style.height = `${h}px`;
+
     const wrapper = document.getElementById(`videoWrapper-${slotIndex}`);
     if (!wrapper || !BeatBarState.overlay) return;
 
@@ -158,7 +171,6 @@ function attachOverlayToSlot(slotIndex) {
         BeatBarState.overlay.style.right = '0';
         BeatBarState.overlay.style.bottom = `${BEAT_CONFIG.overlayOffsetBottom}px`;
         BeatBarState.overlay.style.top = '';
-        BeatBarState.overlay.style.height = `${BEAT_CONFIG.overlayHeight}px`;
         BeatBarState.overlay.style.zIndex = '9999';
     } else {
         // Per-video: append inside the wrapper
@@ -168,11 +180,34 @@ function attachOverlayToSlot(slotIndex) {
         BeatBarState.overlay.style.right = '0';
         BeatBarState.overlay.style.bottom = `${BEAT_CONFIG.overlayOffsetBottom}px`;
         BeatBarState.overlay.style.top = '';
-        BeatBarState.overlay.style.height = `${BEAT_CONFIG.overlayHeight}px`;
         BeatBarState.overlay.style.zIndex = '50';
     }
     BeatBarState.overlay.style.display = '';
     resizeBeatCanvas();
+}
+
+function setBeatPreset(preset) {
+    BEAT_CONFIG.preset = preset;
+    // Invalidate cache — different preset = different beats
+    beatCache.clear();
+    if (BeatBarState.enabled && BeatBarState.activeSlot >= 0) {
+        showBeatBar(BeatBarState.activeSlot);
+    }
+}
+
+function setBeatLookahead(seconds) {
+    BEAT_CONFIG.lookahead = parseFloat(seconds);
+}
+
+function setBeatSize(size) {
+    BEAT_CONFIG.barSize = size;
+    if (BeatBarState.enabled && BeatBarState.activeSlot >= 0) {
+        resetBeatBarLayout();
+    }
+}
+
+function setBeatPlayheadPos(frac) {
+    BEAT_CONFIG.playheadXFrac = parseFloat(frac);
 }
 
 // ========== Overlay creation ==========
@@ -382,6 +417,16 @@ function checkBeatsPassed() {
     BeatBarState.lastBeatIdx = idx - 1;
 }
 
+function invalidateBeatsForSlot(slotIndex) {
+    beatCache.delete(slotIndex);
+    // If this is the slot currently being shown, re-trigger analysis
+    if (BeatBarState.enabled && BeatBarState.activeSlot === slotIndex) {
+        BeatBarState.lastBeatIdx = -1;
+        BeatBarState.pulses.clear();
+        showBeatBar(slotIndex);
+    }
+}
+
 function drawBeatBar(now) {
     const ctx = BeatBarState.ctx;
     const canvas = BeatBarState.canvas;
@@ -427,8 +472,9 @@ function drawBeatBar(now) {
     ctx.lineTo(playheadX, h - 6);
     ctx.stroke();
 
-    const baseR = Math.max(7, Math.min(11, h * 0.1));
-    const pulseR = baseR + 12;
+    const sizeCfg = BAR_SIZES[BEAT_CONFIG.barSize] || BAR_SIZES.medium;
+    const baseR = sizeCfg.baseR;
+    const pulseR = baseR + sizeCfg.pulseExtra;
 
     const firstT = t - lookbehind - 0.2;
     let lo = 0, hi = beats.length;
@@ -486,3 +532,9 @@ function drawBeatBar(now) {
 window.toggleBeats = toggleBeats;
 window.onActiveAudioChanged = onActiveAudioChanged;
 window.BeatBarState = BeatBarState;
+window.invalidateBeatsForSlot = invalidateBeatsForSlot;
+
+window.setBeatPreset = setBeatPreset;
+window.setBeatLookahead = setBeatLookahead;
+window.setBeatSize = setBeatSize;
+window.setBeatPlayheadPos = setBeatPlayheadPos;
