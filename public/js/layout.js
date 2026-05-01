@@ -78,7 +78,7 @@ function applyStackStyles() {
         wrapper.style.opacity = Math.max(0, Math.min(1, alpha));
         wrapper.style.mixBlendMode = blend;
         wrapper.style.zIndex = stackPos + 1;
-        wrapper.style.background = 'transparent';
+        // wrapper.style.background = 'transparent';
     });
 
     document.getElementById('videoContainer').style.background = '#000';

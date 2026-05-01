@@ -425,7 +425,7 @@ function handleMetadata(index) {
     State.videoSlots[index].video = video;
     State.videoSlots[index].duration = video.duration;
     updateDuration();
-    updateAudioMode();
+    toggleAudioMode();
     
     if (State.isDesynced) {
         // In desync mode, start from beginning and autoplay if currently playing

@@ -1255,3 +1255,29 @@ body.stack-mode .video-wrapper:not(:last-child) .video-overlay {
     color: #ff4778;
     transform: scale(1.15);
 }
+
+.beatbar-overlay {
+    pointer-events: none;
+    font-family: inherit;
+}
+.beatbar-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+.beatbar-status {
+    position: absolute;
+    top: 6px; left: 8px;
+    font-size: 11px;
+    color: #fff;
+    background: rgba(0,0,0,0.55);
+    padding: 2px 8px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+.beatbar-status:not(:empty) { opacity: 1; }
+.beatbar-status--err { color: #f9a; background: rgba(60,0,0,0.7); }
+.beatbar-status--ok  { color: #9ef0df; }
+.beatbar-status--busy { color: #ffd; }
+.beats-btn.active { background: var(--accent, #7aa8ff); color: #000; }

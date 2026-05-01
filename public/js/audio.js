@@ -4,9 +4,17 @@
  */
 
 function updateAudioMode() {
-    State.audioMode = document.getElementById('audioToggleBtn').value;
+    // Called by handleMetadata when a new video loads.
+    // State.audioMode is already managed by toggleAudioMode().
     updateAudioIndicators();
     applyAudioSettings();
+
+    if (typeof onActiveAudioChanged === 'function') {
+        const target = State.audioMode === 'single'
+            ? State.activeAudioSlot
+            : State.videoSlots.findIndex(s => s.loaded);
+        onActiveAudioChanged(target);
+    }
 }
 
 function setActiveAudio(index) {
@@ -18,6 +26,15 @@ function setActiveAudio(index) {
     updateAudioIndicators();
     applyAudioSettings();
     showToast(`Audio: Video ${index + 1}`);
+    
+    // Notify beats
+    if (typeof onActiveAudioChanged === 'function') {
+        onActiveAudioChanged(index);
+    }
+}
+
+function pickFirstLoaded() {
+    return State.videoSlots.findIndex(s => s.loaded);
 }
 
 function updateAudioIndicators() {

@@ -82,6 +82,9 @@ function initKeyboardShortcuts() {
             case 's': case 'S': 
                 toggleStack(); 
                 break;
+            case 'b': case 'B': 
+                toggleBeats();
+                break;
         }
     });
 }
