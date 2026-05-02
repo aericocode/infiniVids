@@ -211,42 +211,178 @@ function scheduleHideOverlay(index) {
 function updateVideoCount() {
     const newCount = parseInt(document.getElementById('videoCount').value);
     const currentCount = State.videoSlots.length;
-    
+
     if (newCount > currentCount) {
         for (let i = currentCount; i < newCount; i++) addVideoSlot();
         recalculateLayout();
     } else if (newCount < currentCount) {
-        // Preserve playback state
-        const wasPlaying = State.isPlaying;
-        const savedMasterTime = State.masterTime;
-        
-        // Pause all before removing
-        if (wasPlaying) {
-            State.videoSlots.forEach((slot, i) => {
-                if (slot.loaded) {
-                    document.getElementById(`video-${i}`).pause();
-                }
-            });
-            State.isPlaying = false;
+        const removeCount = currentCount - newCount;
+
+        // Pick which slots to drop: empty slots from the end first, then
+        // loaded slots from the end if we still need to remove more. This
+        // preserves loaded videos in lower indices when the user shrinks the
+        // grid past empty trailing slots.
+        const indicesToRemove = pickSlotsToRemove(removeCount);
+
+        // Decide rebuild strategy:
+        //  - If we're only removing trailing slots (a contiguous range at the
+        //    end), just splice them off — fast, indices stay stable.
+        //  - Otherwise we'd leave gaps (e.g. removing slot 1 of [0:loaded,
+        //    1:empty, 2:loaded]), so go through the full rebuild path that
+        //    re-creates wrappers with sequential indices.
+        const isTrailingOnly = indicesToRemove.every(
+            (idx, i) => idx === currentCount - 1 - i
+        );
+
+        if (isTrailingOnly) {
+            removeTrailingSlots(indicesToRemove);
+        } else {
+            rebuildWithoutSlots(indicesToRemove);
         }
-        
-        // Remove slots from the end
-        for (let i = currentCount - 1; i >= newCount; i--) {
-            const wrapper = document.getElementById(`videoWrapper-${i}`);
-            if (wrapper) wrapper.remove();
-            State.videoSlots.splice(i, 1);
+    }
+}
+
+/**
+ * Choose `count` slot indices to remove. Strategy:
+ *   1. Walk from the end, collecting empty slot indices.
+ *   2. If we still need more, walk from the end collecting loaded slot indices
+ *      not already chosen.
+ * Returns an array of indices in DESCENDING order (safe to splice in order).
+ */
+function pickSlotsToRemove(count) {
+    const slots = State.videoSlots;
+    const picked = [];
+
+    // Pass 1: empty slots from highest index down.
+    for (let i = slots.length - 1; i >= 0 && picked.length < count; i--) {
+        if (!slots[i].loaded) picked.push(i);
+    }
+
+    // Pass 2: filled slots from highest index down, skipping already-picked.
+    if (picked.length < count) {
+        const pickedSet = new Set(picked);
+        for (let i = slots.length - 1; i >= 0 && picked.length < count; i--) {
+            if (!pickedSet.has(i)) picked.push(i);
         }
-        
-        document.getElementById('videoCount').value = State.videoSlots.length;
-        recalculateLayout();
-        
-        // Recalculate duration
-        updateDuration();
-        
-        // Clamp masterTime if needed
-        State.masterTime = Math.min(savedMasterTime, State.duration > 0 ? State.duration : savedMasterTime);
-        
-        // Restore playback
+    }
+
+    // Sort descending for safe splicing.
+    return picked.sort((a, b) => b - a);
+}
+
+/**
+ * Fast path: indices form a contiguous range at the end. No reindexing needed.
+ */
+function removeTrailingSlots(indicesToRemove) {
+    const wasPlaying = State.isPlaying;
+    const savedMasterTime = State.masterTime;
+
+    if (wasPlaying) {
+        State.videoSlots.forEach((slot, i) => {
+            if (slot.loaded) document.getElementById(`video-${i}`).pause();
+        });
+        State.isPlaying = false;
+    }
+
+    // indicesToRemove is descending, so splicing in order is safe.
+    for (const idx of indicesToRemove) {
+        const wrapper = document.getElementById(`videoWrapper-${idx}`);
+        if (wrapper) wrapper.remove();
+        State.videoSlots.splice(idx, 1);
+    }
+
+    document.getElementById('videoCount').value = State.videoSlots.length;
+    recalculateLayout();
+    updateDuration();
+
+    State.masterTime = Math.min(savedMasterTime, State.duration > 0 ? State.duration : savedMasterTime);
+
+    if (wasPlaying) {
+        State.isPlaying = true;
+        document.getElementById('playBtn').innerHTML = '⏸ Pause';
+    }
+    if (!State.isDesynced) {
+        setAllVideosTime(State.masterTime);
+    } else if (wasPlaying) {
+        State.videoSlots.forEach((slot, i) => {
+            if (slot.loaded) document.getElementById(`video-${i}`).play().catch(() => {});
+        });
+    }
+}
+
+/**
+ * Slow path: removed slots leave gaps. Rebuild the container with sequential
+ * indices, preserving loaded video data. Mirrors the approach in
+ * removeVideoSlot but for multiple indices at once.
+ */
+function rebuildWithoutSlots(indicesToRemove) {
+    const wasPlaying = State.isPlaying;
+    const savedMasterTime = State.masterTime;
+
+    if (wasPlaying) {
+        State.videoSlots.forEach((slot, i) => {
+            if (slot.loaded) document.getElementById(`video-${i}`).pause();
+        });
+    }
+
+    const removeSet = new Set(indicesToRemove);
+
+    // Snapshot the keepers along with their current source/file so we can
+    // re-attach the same media to the new wrappers.
+    const keepers = [];
+    State.videoSlots.forEach((slot, i) => {
+        if (removeSet.has(i)) return;
+        const video = document.getElementById(`video-${i}`);
+        keepers.push({
+            loaded: slot.loaded,
+            duration: slot.duration,
+            offset: slot.offset,
+            volume: slot.volume,
+            muted: slot.muted,
+            sourceFile: slot.sourceFile,
+            src: video?.src || '',
+            name: video?.dataset?.name || '',
+        });
+    });
+
+    // Wipe DOM + state.
+    document.getElementById('videoContainer').innerHTML = '';
+    State.videoSlots = [];
+
+    // Rebuild fresh slots, then restore loaded media into the keepers' slots.
+    keepers.forEach((k) => {
+        const newIndex = addVideoSlot();
+        if (!k.loaded) return;
+
+        applyStackStyles();
+        applyLoopAttribute();
+
+        const video = document.getElementById(`video-${newIndex}`);
+        const placeholder = document.getElementById(`placeholder-${newIndex}`);
+        const label = document.getElementById(`label-${newIndex}`);
+
+        video.src = k.src;
+        video.style.display = 'block';
+        if (k.name) video.dataset.name = k.name;
+        placeholder.style.display = 'none';
+        label.textContent = `${newIndex + 1}: ${k.name || `Video ${newIndex + 1}`}`;
+
+        State.videoSlots[newIndex].loaded = true;
+        State.videoSlots[newIndex].video = video;
+        State.videoSlots[newIndex].duration = k.duration;
+        State.videoSlots[newIndex].offset = k.offset;
+        State.videoSlots[newIndex].volume = k.volume;
+        State.videoSlots[newIndex].muted = k.muted;
+        State.videoSlots[newIndex].sourceFile = k.sourceFile;
+    });
+
+    document.getElementById('videoCount').value = State.videoSlots.length;
+    recalculateLayout();
+    updateDuration();
+
+    State.masterTime = Math.min(savedMasterTime, State.duration > 0 ? State.duration : savedMasterTime);
+
+    setTimeout(() => {
         if (wasPlaying) {
             State.isPlaying = true;
             document.getElementById('playBtn').innerHTML = '⏸ Pause';
@@ -254,14 +390,11 @@ function updateVideoCount() {
         if (!State.isDesynced) {
             setAllVideosTime(State.masterTime);
         } else if (wasPlaying) {
-            // Resume playing all videos in desync mode
             State.videoSlots.forEach((slot, i) => {
-                if (slot.loaded) {
-                    document.getElementById(`video-${i}`).play().catch(() => {});
-                }
+                if (slot.loaded) document.getElementById(`video-${i}`).play().catch(() => {});
             });
         }
-    }
+    }, 100);
 }
 
 function removeVideoSlot(index) {
