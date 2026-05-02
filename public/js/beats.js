@@ -1,12 +1,8 @@
 /**
  * InfiniVids - Beat Detection & Visualization
- * Ported from beatbar.user.js for local file analysis.
- *
- * Public API:
- *   toggleBeats()           - global on/off
- *   ensureBeatsForSlot(i)   - analyze slot i if not cached
- *   moveBeatBarTo(slotIdx)  - relocate overlay to a different video
- *   onActiveAudioChanged(i) - call when audio source switches
+ * Live preview is canvas-based.
+ * Export pre-renders the bar to a PNG sequence (cross-browser, alpha-safe,
+ * no codec dependencies).
  */
 
 const PRESETS = {
@@ -17,26 +13,25 @@ const PRESETS = {
 
 const BEAT_CONFIG = {
     preset: 'broad',
-    lookahead: 5,           // default 5s, range 3.5-7.5
+    lookahead: 5,
     tickLeadMs: 30,
     overlayHeight: 90,
     overlayOffsetBottom: 70,
-    playheadXFrac: 0.5,     // center
-    barSize: 'medium',      // small / medium / large
+    playheadXFrac: 0.5,
+    barSize: 'medium',
 };
 
 const BAR_SIZES = {
-    small:  { height: 60, baseR: 5, pulseExtra: 8  },
-    medium: { height: 90, baseR: 8, pulseExtra: 12 },
+    small:  { height: 60,  baseR: 5,  pulseExtra: 8  },
+    medium: { height: 90,  baseR: 8,  pulseExtra: 12 },
     large:  { height: 130, baseR: 12, pulseExtra: 18 },
 };
 
-// Per-slot beat data: { slotIndex: { beats, bpm, file: File } }
 const beatCache = new Map();
 
 const BeatBarState = {
     enabled: false,
-    activeSlot: -1,        // which slot the bar is currently rendered on
+    activeSlot: -1,
     overlay: null,
     canvas: null,
     ctx: null,
@@ -47,7 +42,7 @@ const BeatBarState = {
     smoothTime: 0,
     lastVideoTime: 0,
     lastVideoTimeAt: 0,
-    analyzing: new Set(),  // slot indices currently analyzing
+    analyzing: new Set(),
 };
 
 // ========== Public toggle ==========
@@ -74,29 +69,21 @@ function toggleBeats() {
     }
 }
 
-// ========== Active slot resolution ==========
-
 function pickActiveAudioSlot() {
-    // Single audio mode: find the slot currently unmuted
-    // All audio mode: use lastInteractedSlot or first loaded slot
     const slots = State.videoSlots;
     if (!slots || !slots.length) return -1;
 
     if (State.audioMode === 'all') {
-        // Use last-clicked / focused slot if tracked, else first loaded
         if (State.lastActiveAudioSlot != null && slots[State.lastActiveAudioSlot]?.loaded) {
             return State.lastActiveAudioSlot;
         }
-        const firstLoaded = slots.findIndex(s => s.loaded);
-        return firstLoaded;
+        return slots.findIndex(s => s.loaded);
     }
 
-    // single mode: find unmuted video
     for (let i = 0; i < slots.length; i++) {
         const v = document.getElementById(`video-${i}`);
         if (v && !v.muted && slots[i].loaded) return i;
     }
-    // fallback: first loaded
     return slots.findIndex(s => s.loaded);
 }
 
@@ -106,8 +93,6 @@ function onActiveAudioChanged(slotIndex) {
         showBeatBar(slotIndex);
     }
 }
-
-// ========== Show / hide / move ==========
 
 async function showBeatBar(slotIndex) {
     if (slotIndex < 0) return;
@@ -130,13 +115,12 @@ async function showBeatBar(slotIndex) {
         return;
     }
 
-    // Analyze
     setBeatStatus('Analyzing audio…', 'busy');
-    startBeatRenderLoop(); // start drawing the empty bar immediately
+    startBeatRenderLoop();
 
     try {
         const result = await analyzeSlot(slotIndex);
-        if (BeatBarState.activeSlot !== slotIndex) return; // user moved on
+        if (BeatBarState.activeSlot !== slotIndex) return;
         beatCache.set(slotIndex, result);
         setBeatStatus(`${result.beats.length} beats · ${result.bpm.toFixed(1)} BPM`, 'ok');
         scheduleBeatStatusClear();
@@ -162,9 +146,7 @@ function attachOverlayToSlot(slotIndex) {
     const wrapper = document.getElementById(`videoWrapper-${slotIndex}`);
     if (!wrapper || !BeatBarState.overlay) return;
 
-    // In stack mode, overlay must sit above all video layers
     if (State.isStacked) {
-        // Append to videoContainer so it spans the stacked area, with very high z-index
         document.getElementById('videoContainer').appendChild(BeatBarState.overlay);
         BeatBarState.overlay.style.position = 'absolute';
         BeatBarState.overlay.style.left = '0';
@@ -173,7 +155,6 @@ function attachOverlayToSlot(slotIndex) {
         BeatBarState.overlay.style.top = '';
         BeatBarState.overlay.style.zIndex = '9999';
     } else {
-        // Per-video: append inside the wrapper
         wrapper.appendChild(BeatBarState.overlay);
         BeatBarState.overlay.style.position = 'absolute';
         BeatBarState.overlay.style.left = '0';
@@ -186,9 +167,18 @@ function attachOverlayToSlot(slotIndex) {
     resizeBeatCanvas();
 }
 
+function resetBeatBarLayout() {
+    if (!BeatBarState.enabled || BeatBarState.activeSlot < 0) return;
+    attachOverlayToSlot(BeatBarState.activeSlot);
+    if (BeatBarState.canvas) {
+        BeatBarState.canvas.width = 0;
+        BeatBarState.canvas.height = 0;
+    }
+    requestAnimationFrame(resizeBeatCanvas);
+}
+
 function setBeatPreset(preset) {
     BEAT_CONFIG.preset = preset;
-    // Invalidate cache — different preset = different beats
     beatCache.clear();
     if (BeatBarState.enabled && BeatBarState.activeSlot >= 0) {
         showBeatBar(BeatBarState.activeSlot);
@@ -209,8 +199,6 @@ function setBeatSize(size) {
 function setBeatPlayheadPos(frac) {
     BEAT_CONFIG.playheadXFrac = parseFloat(frac);
 }
-
-// ========== Overlay creation ==========
 
 function createBeatOverlay() {
     const overlay = document.createElement('div');
@@ -419,7 +407,6 @@ function checkBeatsPassed() {
 
 function invalidateBeatsForSlot(slotIndex) {
     beatCache.delete(slotIndex);
-    // If this is the slot currently being shown, re-trigger analysis
     if (BeatBarState.enabled && BeatBarState.activeSlot === slotIndex) {
         BeatBarState.lastBeatIdx = -1;
         BeatBarState.pulses.clear();
@@ -427,17 +414,9 @@ function invalidateBeatsForSlot(slotIndex) {
     }
 }
 
-function drawBeatBar(now) {
-    const ctx = BeatBarState.ctx;
-    const canvas = BeatBarState.canvas;
-    if (!ctx || !canvas) return;
-    const w = canvas.clientWidth;
-    const h = canvas.clientHeight;
-    if (w === 0 || h === 0) return;
+// ========== Pure renderer (used by both live + export) ==========
 
-    ctx.clearRect(0, 0, w, h);
-
-    // Card background
+function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = false) {
     const pad = 4, radius = 8;
     ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.strokeStyle = 'rgba(255,255,255,0.14)';
@@ -447,24 +426,28 @@ function drawBeatBar(now) {
     ctx.fill();
     ctx.stroke();
 
-    // Centerline
     ctx.strokeStyle = 'rgba(255,255,255,0.08)';
     ctx.beginPath();
     ctx.moveTo(pad + 4, h / 2);
     ctx.lineTo(w - pad - 4, h / 2);
     ctx.stroke();
 
-    const data = beatCache.get(BeatBarState.activeSlot);
-    if (!data || !data.beats.length) return;
+    if (!beats || !beats.length) return;
 
-    const beats = data.beats;
-    const t = BeatBarState.smoothTime;
+    if (autoCreatePulses) {
+        for (let i = 0; i < beats.length; i++) {
+            if (beats[i] <= t && beats[i] > t - 0.05 && !pulses.has(i)) {
+                pulses.set(i, { startTime: now });
+            }
+            if (beats[i] > t + 0.1) break;
+        }
+    }
+
     const lookahead = BEAT_CONFIG.lookahead;
     const playheadX = w * BEAT_CONFIG.playheadXFrac;
     const lookbehind = lookahead * (BEAT_CONFIG.playheadXFrac / (1 - BEAT_CONFIG.playheadXFrac));
     const pxPerSec = (w - playheadX) / lookahead;
 
-    // Playhead
     ctx.strokeStyle = 'rgba(255,255,255,0.6)';
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -491,14 +474,14 @@ function drawBeatBar(now) {
         const x = playheadX + dt * pxPerSec;
         const y = h / 2;
 
-        const pulse = BeatBarState.pulses.get(i);
+        const pulse = pulses.get(i);
         let radius = baseR;
         let glow = 0;
         if (pulse) {
             const age = (now - pulse.startTime) / 1000;
             const LIFE = 0.4;
             if (age > LIFE) {
-                BeatBarState.pulses.delete(i);
+                pulses.delete(i);
             } else {
                 const k = 1 - (age / LIFE);
                 radius = baseR + k * (pulseR - baseR);
@@ -528,11 +511,86 @@ function drawBeatBar(now) {
     }
 }
 
+function drawBeatBar(now) {
+    const ctx = BeatBarState.ctx;
+    const canvas = BeatBarState.canvas;
+    if (!ctx || !canvas) return;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (w === 0 || h === 0) return;
+
+    ctx.clearRect(0, 0, w, h);
+    const data = beatCache.get(BeatBarState.activeSlot);
+    const beats = data?.beats || [];
+    drawBeatBarFrame(ctx, w, h, BeatBarState.smoothTime, beats, BeatBarState.pulses, now, false);
+}
+
+// ========== Export rendering: PNG sequence ==========
+
+/**
+ * Render the beat bar to a sequence of PNG Blobs, one per export frame.
+ * The frames are full-resolution, transparent everywhere except where the bar
+ * is drawn. ffmpeg consumes them with `-framerate $fps -i frame_%06d.png`,
+ * which preserves alpha natively across all browsers and ffmpeg builds.
+ *
+ * Returns an async iterator so the caller can stream uploads instead of
+ * holding the whole sequence in memory.
+ *
+ * @returns {AsyncGenerator<{index:number, blob:Blob, total:number}>}
+ */
+async function* renderBeatBarPngSequence({ width, height, fps, durationSec, slotIndex, onProgress }) {
+    const data = beatCache.get(slotIndex);
+    if (!data || !data.beats.length) {
+        console.warn('[beats export] no beats for slot', slotIndex);
+        return;
+    }
+
+    const beats = data.beats;
+    const sizeCfg = BAR_SIZES[BEAT_CONFIG.barSize] || BAR_SIZES.medium;
+    const barH = sizeCfg.height;
+    const barY = Math.max(0, height - barH - BEAT_CONFIG.overlayOffsetBottom);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+
+    const pulses = new Map();
+    const totalFrames = Math.ceil(durationSec * fps);
+
+    for (let f = 0; f < totalFrames; f++) {
+        const t = f / fps;
+        const syntheticNow = (f * 1000) / fps;
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.save();
+        ctx.translate(0, barY);
+        drawBeatBarFrame(ctx, width, barH, t, beats, pulses, syntheticNow, true);
+        ctx.restore();
+
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (!blob) {
+            throw new Error(`Failed to create PNG for frame ${f}`);
+        }
+
+        if (onProgress && (f & 31) === 0) {
+            onProgress(f / totalFrames);
+        }
+
+        yield { index: f, blob, total: totalFrames };
+    }
+
+    if (onProgress) onProgress(1);
+}
+
 // Export to global scope
 window.toggleBeats = toggleBeats;
 window.onActiveAudioChanged = onActiveAudioChanged;
 window.BeatBarState = BeatBarState;
 window.invalidateBeatsForSlot = invalidateBeatsForSlot;
+window.resetBeatBarLayout = resetBeatBarLayout;
+window.renderBeatBarPngSequence = renderBeatBarPngSequence;
+window.beatCache = beatCache;
 
 window.setBeatPreset = setBeatPreset;
 window.setBeatLookahead = setBeatLookahead;

@@ -5,6 +5,10 @@
  * actual File blobs the user dropped/picked) plus blend metadata to the local
  * server, which runs native ffmpeg and streams progress back as ndjson.
  *
+ * When the beat bar is enabled, also streams a PNG sequence (one PNG per
+ * frame) as the `beatbar_frames` field. PNGs preserve alpha natively across
+ * all browsers and ffmpeg builds, sidestepping the WebM/VP9-alpha mess.
+ *
  * Drop this file in alongside layout.js / slots.js / etc. The export button in
  * the ribbon already calls showExportModal() — no HTML changes needed.
  */
@@ -34,6 +38,14 @@ function showExportModal() {
 
     const ts = new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-');
     const autoName = `infini-stack-${ts}.mp4`;
+
+    // Beat bar checkbox is only meaningful if beats are currently active and
+    // the active slot has cached beats. Otherwise hide the option entirely.
+    const beatsAvailable = !!(
+        window.BeatBarState?.enabled &&
+        window.BeatBarState.activeSlot >= 0 &&
+        window.beatCache?.get(window.BeatBarState.activeSlot)?.beats?.length
+    );
 
     const modal = document.createElement('div');
     modal.id = 'exportModal';
@@ -70,6 +82,14 @@ function showExportModal() {
                         ${buildOpacityTable(loadedSlots)}
                     </div>
                 </div>
+
+                ${beatsAvailable ? `
+                <div class="export-field">
+                    <label class="export-checkbox-label">
+                        <input type="checkbox" id="exportIncludeBeats" checked>
+                        Include beat bar overlay
+                    </label>
+                </div>` : ''}
             </div>
 
             <div class="export-progress-area" id="exportProgressArea" style="display:none;">
@@ -169,6 +189,15 @@ async function startExport() {
     const activeAudioIndex = orderedSlots.findIndex(s => s.index === State.activeAudioSlot);
     const volumes = orderedSlots.map(s => s.muted ? 0 : (s.volume ?? 1));
 
+    // Beat bar: only engage if checkbox exists, is checked, and we have beats.
+    const beatsCheckbox = document.getElementById('exportIncludeBeats');
+    const wantBeats = !!(
+        beatsCheckbox?.checked &&
+        window.BeatBarState?.enabled &&
+        window.BeatBarState.activeSlot >= 0 &&
+        window.beatCache?.get(window.BeatBarState.activeSlot)?.beats?.length
+    );
+
     const meta = {
         filename,
         fps,
@@ -184,31 +213,63 @@ async function startExport() {
 
     const form = new FormData();
     for (const s of orderedSlots) form.append('videos', s.sourceFile, s.sourceFile.name);
-    form.append('meta', JSON.stringify(meta));
 
     // UI -> exporting state
     document.getElementById('exportProgressArea').style.display = 'block';
     document.getElementById('exportActions').style.display = 'none';
     document.getElementById('exportCancelArea').style.display = 'flex';
-    setExportProgress(0, 'Processing…');
+    setExportProgress(0, wantBeats ? 'Rendering beat bar…' : 'Processing…');
 
     // Pause player while encoding (browser playing the same files would be wasteful).
     const wasPlaying = State.isPlaying;
     if (wasPlaying) togglePlay();
 
     ExportState.cancelController = new AbortController();
+    const signal = ExportState.cancelController.signal;
 
     try {
+        // ─── PNG sequence render (only when beats requested) ──────────────
+        // Rendered BEFORE the fetch starts, so progress UI reflects it.
+        // Streams PNG blobs into the FormData as they're produced.
+        let frameCount = 0;
+        if (wantBeats) {
+            for await (const { index, blob, total } of window.renderBeatBarPngSequence({
+                width: outW,
+                height: outH,
+                fps,
+                durationSec: State.duration,
+                slotIndex: window.BeatBarState.activeSlot,
+                onProgress: (p) => setExportProgress(p * 0.4, 'Rendering beat bar…', `${Math.round(p * 100)}%`),
+            })) {
+                if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+                // Pad index to 6 digits so multer-saved files sort correctly
+                // and so the server can rename them to frame_%06d.png.
+                const name = `frame_${String(index + 1).padStart(6, '0')}.png`;
+                form.append('beatbar_frames', blob, name);
+                frameCount++;
+            }
+            meta.hasBeatBar = true;
+            meta.beatBarFrameCount = frameCount;
+            setExportProgress(0.4, 'Uploading…');
+        }
+
+        form.append('meta', JSON.stringify(meta));
+
         const resp = await fetch('/export', {
             method: 'POST',
             body: form,
-            signal: ExportState.cancelController.signal,
+            signal,
         });
         if (!resp.ok || !resp.body) throw new Error(`Server returned ${resp.status}`);
 
+        // When beats are on, ffmpeg phase covers 40-100%. Otherwise 0-100%.
+        const ffStart = wantBeats ? 0.4 : 0;
+        const ffSpan  = 1 - ffStart;
+
         await readNdjsonStream(resp.body, (evt) => {
             if (evt.type === 'progress') {
-                setExportProgress(evt.pct, 'Encoding…', `${Math.round(evt.pct * 100)}%`);
+                const overall = ffStart + evt.pct * ffSpan;
+                setExportProgress(overall, 'Encoding…', `${Math.round(overall * 100)}%`);
             } else if (evt.type === 'done') {
                 setExportProgress(1, `✓ Saved to exports/${evt.filename}`);
                 setTimeout(closeExportModal, 1800);

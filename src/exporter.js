@@ -1,9 +1,8 @@
 /**
  * Spawn ffmpeg with a stack-blend filter graph and stream progress.
- * Lean: no DB, no queue, no job IDs. One call = one encode.
  */
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
+import path from 'node:path';
 import { buildFilterComplex } from './blend.js';
 
 const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
@@ -17,31 +16,46 @@ const FFMPEG = process.env.FFMPEG_PATH || 'ffmpeg';
  * @param {number}   opts.fps
  * @param {number}   opts.durationSec
  * @param {'plus-lighter'|'normal'} opts.blend
- * @param {number[]} opts.opacities        0..1 per input, same order
+ * @param {number[]} opts.opacities
  * @param {'single'|'all'} opts.audioMode
  * @param {number}   opts.activeAudioIndex
- * @param {number[]} opts.volumes          0..1 per input, used when audioMode='all'
+ * @param {number[]} opts.volumes
+ * @param {string|null} [opts.pngFramesDir]   Optional dir of frame_%06d.png files.
+ *                                            Added as an extra ffmpeg input
+ *                                            after the stack videos so blend.js
+ *                                            can overlay it on the result.
+ * @param {number}   [opts.pngFramesCount]    Number of PNG frames (informational).
  * @param {(pct:number)=>void} [opts.onProgress]
  */
 export async function runExport(opts) {
-  const args = buildArgs(opts);
+  // blend.js takes a `hasBeatBar` flag to know whether to emit the overlay
+  // chain. Derive it from pngFramesDir so the rest of opts stays clean.
+  const hasBeatBar = !!opts.pngFramesDir;
+  const args = buildArgs({ ...opts, hasBeatBar });
+  if (process.env.DEBUG_FFMPEG) {
+    console.log('[ffmpeg]', FFMPEG, args.join(' '));
+  }
   return await run(FFMPEG, args, opts.durationSec, opts.onProgress);
 }
 
 function buildArgs(opts) {
-  const {
-    inputPaths, outPath, fps, durationSec,
-  } = opts;
+  const { inputPaths, outPath, fps, durationSec, pngFramesDir, hasBeatBar } = opts;
 
   const args = ['-hide_banner', '-loglevel', 'error', '-stats', '-y'];
 
-  // Each input: loop indefinitely, then -t caps the global output below.
-  // -stream_loop must come before -i. Loops handle "shorter videos loop while longer continue".
+  // Stack videos: loop indefinitely so shorter videos repeat.
   for (const p of inputPaths) {
     args.push('-stream_loop', '-1', '-i', p);
   }
 
-  const filter = buildFilterComplex(opts);
+  // Beat bar PNG sequence: framerate must match output fps so ffmpeg consumes
+  // exactly one PNG per output frame. -framerate goes BEFORE -i.
+  if (pngFramesDir) {
+    const pattern = path.join(pngFramesDir, 'frame_%06d.png');
+    args.push('-framerate', String(fps), '-i', pattern);
+  }
+
+  const filter = buildFilterComplex({ ...opts, hasBeatBar });
 
   args.push(
     '-filter_complex', filter,
@@ -77,7 +91,6 @@ function run(cmd, args, durationSec, onProgress) {
       }
     });
     p.on('close', (code) => {
-      // Final tick so the UI hits 100% before the 'done' event.
       if (code === 0 && onProgress) onProgress(1);
       resolve({ code, stderr });
     });
