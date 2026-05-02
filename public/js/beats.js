@@ -19,13 +19,23 @@ const BEAT_CONFIG = {
     overlayOffsetBottom: 70,
     playheadXFrac: 0.5,
     barSize: 'medium',
+    sensitivity: 1.0,         // user-facing multiplier; higher = more beats detected
 };
 
+// Sizes mirror the userscript. Small/medium/large/xl are bottom-anchored
+// fixed-height bars; 'full' is a tall centered overlay (no background card,
+// hollow ring dots) that spans most of the video height.
 const BAR_SIZES = {
     small:  { height: 60,  baseR: 5,  pulseExtra: 8  },
     medium: { height: 90,  baseR: 8,  pulseExtra: 12 },
     large:  { height: 130, baseR: 12, pulseExtra: 18 },
+    xl:     { height: 180, baseR: 16, pulseExtra: 22 },
+    full:   { height: null, baseR: null, pulseExtra: 12 }, // see resolveFullDims()
 };
+
+// Past-beat fade (seconds) — beats fade out after passing playhead.
+const PAST_FADE_SEC = 1.2;
+const PULSE_LIFE_SEC = 0.4;
 
 const beatCache = new Map();
 
@@ -44,6 +54,11 @@ const BeatBarState = {
     lastVideoTimeAt: 0,
     analyzing: new Set(),
 };
+
+// Cache key includes preset + sensitivity — anything that affects detection.
+function cacheParams() {
+    return `${BEAT_CONFIG.preset}@s${BEAT_CONFIG.sensitivity.toFixed(2)}`;
+}
 
 // ========== Public toggle ==========
 
@@ -108,7 +123,7 @@ async function showBeatBar(slotIndex) {
     attachOverlayToSlot(slotIndex);
 
     const cached = beatCache.get(slotIndex);
-    if (cached) {
+    if (cached && cached.params === cacheParams()) {
         setBeatStatus(`${cached.beats.length} beats · ${cached.bpm.toFixed(1)} BPM`, 'ok');
         scheduleBeatStatusClear();
         startBeatRenderLoop();
@@ -121,7 +136,7 @@ async function showBeatBar(slotIndex) {
     try {
         const result = await analyzeSlot(slotIndex);
         if (BeatBarState.activeSlot !== slotIndex) return;
-        beatCache.set(slotIndex, result);
+        beatCache.set(slotIndex, { ...result, params: cacheParams() });
         setBeatStatus(`${result.beats.length} beats · ${result.bpm.toFixed(1)} BPM`, 'ok');
         scheduleBeatStatusClear();
     } catch (e) {
@@ -140,28 +155,36 @@ function hideBeatBar() {
 }
 
 function attachOverlayToSlot(slotIndex) {
-    const h = BAR_SIZES[BEAT_CONFIG.barSize]?.height || BEAT_CONFIG.overlayHeight;
-    BeatBarState.overlay.style.height = `${h}px`;
-
+    const isFull = BEAT_CONFIG.barSize === 'full';
     const wrapper = document.getElementById(`videoWrapper-${slotIndex}`);
     if (!wrapper || !BeatBarState.overlay) return;
+
+    BeatBarState.overlay.classList.toggle('beatbar-overlay--full', isFull);
 
     if (State.isStacked) {
         document.getElementById('videoContainer').appendChild(BeatBarState.overlay);
         BeatBarState.overlay.style.position = 'absolute';
         BeatBarState.overlay.style.left = '0';
         BeatBarState.overlay.style.right = '0';
-        BeatBarState.overlay.style.bottom = `${BEAT_CONFIG.overlayOffsetBottom}px`;
-        BeatBarState.overlay.style.top = '';
         BeatBarState.overlay.style.zIndex = '9999';
     } else {
         wrapper.appendChild(BeatBarState.overlay);
         BeatBarState.overlay.style.position = 'absolute';
         BeatBarState.overlay.style.left = '0';
         BeatBarState.overlay.style.right = '0';
+        BeatBarState.overlay.style.zIndex = '50';
+    }
+
+    if (isFull) {
+        // Centered tall band: ~70% of container height, vertically centered.
+        BeatBarState.overlay.style.top = '15%';
+        BeatBarState.overlay.style.bottom = '';
+        BeatBarState.overlay.style.height = '70%';
+    } else {
+        const h = BAR_SIZES[BEAT_CONFIG.barSize]?.height || BAR_SIZES.medium.height;
+        BeatBarState.overlay.style.height = `${h}px`;
         BeatBarState.overlay.style.bottom = `${BEAT_CONFIG.overlayOffsetBottom}px`;
         BeatBarState.overlay.style.top = '';
-        BeatBarState.overlay.style.zIndex = '50';
     }
     BeatBarState.overlay.style.display = '';
     resizeBeatCanvas();
@@ -190,6 +213,7 @@ function setBeatLookahead(seconds) {
 }
 
 function setBeatSize(size) {
+    if (!BAR_SIZES[size]) return;
     BEAT_CONFIG.barSize = size;
     if (BeatBarState.enabled && BeatBarState.activeSlot >= 0) {
         resetBeatBarLayout();
@@ -198,6 +222,18 @@ function setBeatSize(size) {
 
 function setBeatPlayheadPos(frac) {
     BEAT_CONFIG.playheadXFrac = parseFloat(frac);
+}
+
+// Sensitivity multiplier: 0.5–3.0. Higher = more beats. Clears cache and
+// re-analyzes so the new value takes effect.
+function setBeatSensitivity(mult) {
+    const v = Math.max(0.5, Math.min(3.0, parseFloat(mult) || 1.0));
+    if (v === BEAT_CONFIG.sensitivity) return;
+    BEAT_CONFIG.sensitivity = v;
+    beatCache.clear();
+    if (BeatBarState.enabled && BeatBarState.activeSlot >= 0) {
+        showBeatBar(BeatBarState.activeSlot);
+    }
 }
 
 function createBeatOverlay() {
@@ -261,6 +297,7 @@ async function analyzeSlot(slotIndex) {
 
 async function analyzeAudioBuffer(arrayBuffer, presetKey) {
     const p = PRESETS[presetKey] || PRESETS.kick;
+    const sensMult = BEAT_CONFIG.sensitivity || 1.0;
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
     let decoded;
     try {
@@ -281,8 +318,11 @@ async function analyzeAudioBuffer(arrayBuffer, presetKey) {
     const filtered = await offline.startRendering();
 
     const minGapMs = (60 / p.maxBpm) * 1000;
+    // Lower threshold = more beats. User slider is intuitive (higher = more
+    // sensitive = more beats), so divide preset sensitivity by the multiplier.
+    const effectiveSensitivity = p.sensitivity / sensMult;
     const beats = detectBeats(filtered, {
-        sensitivity: p.sensitivity,
+        sensitivity: effectiveSensitivity,
         minGapMs,
         avgWindowSec: p.avgWindow,
     });
@@ -416,21 +456,29 @@ function invalidateBeatsForSlot(slotIndex) {
 
 // ========== Pure renderer (used by both live + export) ==========
 
-function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = false) {
-    const pad = 4, radius = 8;
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.roundRect(pad, pad, w - pad * 2, h - pad * 2, radius);
-    ctx.fill();
-    ctx.stroke();
+/**
+ * @param {boolean} isFull - When true, renders 'full' style: no background
+ *                           card, hollow ring dots, vertical playhead tick.
+ *                           Dot radii derived from bar height instead of
+ *                           the size preset.
+ */
+function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses, isFull) {
+    if (!isFull) {
+        const pad = 4, radius = 8;
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.roundRect(pad, pad, w - pad * 2, h - pad * 2, radius);
+        ctx.fill();
+        ctx.stroke();
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.beginPath();
-    ctx.moveTo(pad + 4, h / 2);
-    ctx.lineTo(w - pad - 4, h / 2);
-    ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.beginPath();
+        ctx.moveTo(pad + 4, h / 2);
+        ctx.lineTo(w - pad - 4, h / 2);
+        ctx.stroke();
+    }
 
     if (!beats || !beats.length) return;
 
@@ -448,16 +496,34 @@ function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = f
     const lookbehind = lookahead * (BEAT_CONFIG.playheadXFrac / (1 - BEAT_CONFIG.playheadXFrac));
     const pxPerSec = (w - playheadX) / lookahead;
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(playheadX, 6);
-    ctx.lineTo(playheadX, h - 6);
-    ctx.stroke();
+    // Sizing: full mode derives from canvas height, others from size preset.
+    let baseR, pulseR;
+    if (isFull) {
+        baseR = Math.max(10, Math.min(20, h * 0.06));
+        pulseR = baseR + 12;
+    } else {
+        const sizeCfg = BAR_SIZES[BEAT_CONFIG.barSize] || BAR_SIZES.medium;
+        baseR = sizeCfg.baseR;
+        pulseR = baseR + sizeCfg.pulseExtra;
+    }
 
-    const sizeCfg = BAR_SIZES[BEAT_CONFIG.barSize] || BAR_SIZES.medium;
-    const baseR = sizeCfg.baseR;
-    const pulseR = baseR + sizeCfg.pulseExtra;
+    // Playhead. Full = short vertical tick centered on dot strip; others = full-height line.
+    if (isFull) {
+        const halfStripH = baseR * 1.4;
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(playheadX, h / 2 - halfStripH);
+        ctx.lineTo(playheadX, h / 2 + halfStripH);
+        ctx.stroke();
+    } else {
+        ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(playheadX, 6);
+        ctx.lineTo(playheadX, h - 6);
+        ctx.stroke();
+    }
 
     const firstT = t - lookbehind - 0.2;
     let lo = 0, hi = beats.length;
@@ -465,6 +531,9 @@ function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = f
         const mid = (lo + hi) >> 1;
         if (beats[mid] < firstT) lo = mid + 1; else hi = mid;
     }
+
+    const dotAlpha = isFull ? 0.75 : 1.0;
+    const glowMult = isFull ? 0.35 : 0.55;
 
     for (let i = lo; i < beats.length; i++) {
         const bt = beats[i];
@@ -474,16 +543,22 @@ function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = f
         const x = playheadX + dt * pxPerSec;
         const y = h / 2;
 
+        // Past-beat fade.
+        let fade = 1;
+        if (dt < 0) {
+            fade = 1 - Math.min(1, -dt / PAST_FADE_SEC);
+            if (fade <= 0) continue;
+        }
+
         const pulse = pulses.get(i);
         let radius = baseR;
         let glow = 0;
         if (pulse) {
             const age = (now - pulse.startTime) / 1000;
-            const LIFE = 0.4;
-            if (age > LIFE) {
+            if (age > PULSE_LIFE_SEC) {
                 pulses.delete(i);
             } else {
-                const k = 1 - (age / LIFE);
+                const k = 1 - (age / PULSE_LIFE_SEC);
                 radius = baseR + k * (pulseR - baseR);
                 glow = k;
             }
@@ -491,7 +566,7 @@ function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = f
 
         if (glow > 0) {
             const g = ctx.createRadialGradient(x, y, 0, x, y, radius + 18);
-            g.addColorStop(0, `rgba(122,168,255,${glow * 0.55})`);
+            g.addColorStop(0, `rgba(122,168,255,${glow * glowMult * fade})`);
             g.addColorStop(1, 'rgba(122,168,255,0)');
             ctx.fillStyle = g;
             ctx.beginPath();
@@ -500,14 +575,39 @@ function drawBeatBarFrame(ctx, w, h, t, beats, pulses, now, autoCreatePulses = f
         }
 
         const isPast = dt < -0.02;
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.beginPath();
-        ctx.arc(x, y, radius + 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = isPast ? '#9ef0df' : '#7aa8ff';
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
+
+        ctx.save();
+        ctx.globalAlpha = fade * dotAlpha;
+
+        if (isFull) {
+            const dotColor = isPast ? '#9ef0df' : '#7aa8ff';
+            // Faint center fill independent of dotAlpha.
+            ctx.save();
+            ctx.globalAlpha = fade * 0.15;
+            ctx.fillStyle = dotColor;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            // Solid border.
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = dotColor;
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.stroke();
+        } else {
+            // Standard: dark halo + filled dot + drop line.
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.beginPath();
+            ctx.arc(x, y, radius + 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = isPast ? '#9ef0df' : '#7aa8ff';
+            ctx.beginPath();
+            ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.restore();
     }
 }
 
@@ -522,19 +622,34 @@ function drawBeatBar(now) {
     ctx.clearRect(0, 0, w, h);
     const data = beatCache.get(BeatBarState.activeSlot);
     const beats = data?.beats || [];
-    drawBeatBarFrame(ctx, w, h, BeatBarState.smoothTime, beats, BeatBarState.pulses, now, false);
+    const isFull = BEAT_CONFIG.barSize === 'full';
+    drawBeatBarFrame(ctx, w, h, BeatBarState.smoothTime, beats, BeatBarState.pulses, now, false, isFull);
 }
 
 // ========== Export rendering: PNG sequence ==========
+
+/**
+ * Compute the band of the export canvas where the bar is drawn.
+ * - Standard sizes: bottom-anchored at overlayOffsetBottom, fixed height.
+ * - Full: 70% of height, vertically centered (matches userscript).
+ */
+function resolveBarBand(width, height) {
+    if (BEAT_CONFIG.barSize === 'full') {
+        const barH = Math.round(height * 0.70);
+        const barY = Math.round((height - barH) / 2);
+        return { barH, barY, isFull: true };
+    }
+    const sizeCfg = BAR_SIZES[BEAT_CONFIG.barSize] || BAR_SIZES.medium;
+    const barH = sizeCfg.height;
+    const barY = Math.max(0, height - barH - BEAT_CONFIG.overlayOffsetBottom);
+    return { barH, barY, isFull: false };
+}
 
 /**
  * Render the beat bar to a sequence of PNG Blobs, one per export frame.
  * The frames are full-resolution, transparent everywhere except where the bar
  * is drawn. ffmpeg consumes them with `-framerate $fps -i frame_%06d.png`,
  * which preserves alpha natively across all browsers and ffmpeg builds.
- *
- * Returns an async iterator so the caller can stream uploads instead of
- * holding the whole sequence in memory.
  *
  * @returns {AsyncGenerator<{index:number, blob:Blob, total:number}>}
  */
@@ -546,9 +661,7 @@ async function* renderBeatBarPngSequence({ width, height, fps, durationSec, slot
     }
 
     const beats = data.beats;
-    const sizeCfg = BAR_SIZES[BEAT_CONFIG.barSize] || BAR_SIZES.medium;
-    const barH = sizeCfg.height;
-    const barY = Math.max(0, height - barH - BEAT_CONFIG.overlayOffsetBottom);
+    const { barH, barY, isFull } = resolveBarBand(width, height);
 
     const canvas = document.createElement('canvas');
     canvas.width = width;
@@ -565,7 +678,7 @@ async function* renderBeatBarPngSequence({ width, height, fps, durationSec, slot
         ctx.clearRect(0, 0, width, height);
         ctx.save();
         ctx.translate(0, barY);
-        drawBeatBarFrame(ctx, width, barH, t, beats, pulses, syntheticNow, true);
+        drawBeatBarFrame(ctx, width, barH, t, beats, pulses, syntheticNow, true, isFull);
         ctx.restore();
 
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
@@ -596,3 +709,4 @@ window.setBeatPreset = setBeatPreset;
 window.setBeatLookahead = setBeatLookahead;
 window.setBeatSize = setBeatSize;
 window.setBeatPlayheadPos = setBeatPlayheadPos;
+window.setBeatSensitivity = setBeatSensitivity;
