@@ -339,7 +339,7 @@ function removeVideo(index) {
     if (typeof invalidateBeatsForSlot === 'function') {
         invalidateBeatsForSlot(index);
     }
-    
+
     // Preserve playback state
     const wasPlaying = State.isPlaying;
     const savedMasterTime = State.masterTime;
@@ -435,7 +435,6 @@ function handleMetadata(index) {
     State.videoSlots[index].video = video;
     State.videoSlots[index].duration = video.duration;
     updateDuration();
-    toggleAudioMode();
     
     if (State.isDesynced) {
         // In desync mode, start from beginning and autoplay if currently playing
